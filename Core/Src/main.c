@@ -23,6 +23,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include "stm32f4xx.h"
+#include <time.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -57,10 +58,14 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+RTC_HandleTypeDef hrtc;
+
 UART_HandleTypeDef huart1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
+char trans_str[64] = {0,};
+
 uint16_t x,y,z;
 int16_t x_final, y_final, z_final;
 uint16_t rxd,rxdf;
@@ -71,6 +76,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_RTC_Init(void);
 /* USER CODE BEGIN PFP */
 void RCC_Init(void);
 void GPIO_Init(void);
@@ -86,9 +92,6 @@ void TIM4_ms_Delay(uint16_t delay);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-uint8_t tx_buff[]={0,1,2,3,4,5,6,7,8,9};
-uint8_t tx_buff2 = 1;
-char txD[5]="XM3\r\n";
 /* USER CODE END 0 */
 
 /**
@@ -124,6 +127,7 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   MX_USART2_UART_Init();
+  MX_RTC_Init();
   /* USER CODE BEGIN 2 */
   /* USER CODE END 2 */
 
@@ -137,35 +141,11 @@ int main(void)
 	  x_final = Convert_To_Val(x) + X_OFFSET;
 	  y_final = Convert_To_Val(y);
 
-	  // Switch on LEDs based on the acceleration value obtained
-	  if ((x_final != 0) && (y_final != 0)){
-		  if (x_final > THRESH_HIGH){
-			  GPIOD->ODR |= GPIO_ODR_OD14;
-			  GPIOD->ODR &= ~(GPIO_ODR_OD12 | GPIO_ODR_OD13 | GPIO_ODR_OD15);
-		  }
-		  else if (x_final < THRESH_LOW){
-			  GPIOD->ODR |= GPIO_ODR_OD12;
-			  GPIOD->ODR &= ~(GPIO_ODR_OD14 | GPIO_ODR_OD13 | GPIO_ODR_OD15);
-		  }
-		  if (y_final > THRESH_HIGH){
-			  GPIOD->ODR |= GPIO_ODR_OD13;
-			  GPIOD->ODR &= ~(GPIO_ODR_OD12 | GPIO_ODR_OD14 | GPIO_ODR_OD15);
-		  }
-		  else if (y_final < THRESH_LOW ){
-			  GPIOD->ODR |= GPIO_ODR_OD15;
-			  GPIOD->ODR &= ~(GPIO_ODR_OD12 | GPIO_ODR_OD13 | GPIO_ODR_OD14);
-		  }
-	  }
-	  else
-		  GPIOD->ODR &= ~(GPIO_ODR_OD12 | GPIO_ODR_OD13 | GPIO_ODR_OD14 | GPIO_ODR_OD15);
+	  snprintf(trans_str, 63, "{\"x\":%d,\"y\":%d,\"z\":%d}", x_final, y_final, z);
+	  HAL_UART_Transmit(&huart2, (uint8_t*)trans_str, strlen(trans_str), 1000);
 
-	  // Give a finite delay
-	  // TIM4_ms_Delay(20);
-	  //HAL_UART_Transmit(&huart2,str,16,0xFFFF);
-	  uint8_t pos[3] = {(uint8_t)x_final, (uint8_t)y_final, (uint8_t)z};
-	  HAL_UART_Transmit(&huart2, pos, sizeof(pos), 0xFFFF);
-	  HAL_Delay(100);
-	  //HAL_UART_Receive_IT(&huart1, rx_buff, 10);
+
+	  HAL_Delay(1000);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
@@ -189,9 +169,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -210,6 +191,68 @@ void SystemClock_Config(void)
   {
     Error_Handler();
   }
+}
+
+/**
+  * @brief RTC Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_RTC_Init(void)
+{
+
+  /* USER CODE BEGIN RTC_Init 0 */
+
+  /* USER CODE END RTC_Init 0 */
+
+  RTC_TimeTypeDef sTime = {0};
+  RTC_DateTypeDef sDate = {0};
+
+  /* USER CODE BEGIN RTC_Init 1 */
+
+  /* USER CODE END RTC_Init 1 */
+  /** Initialize RTC Only
+  */
+  hrtc.Instance = RTC;
+  hrtc.Init.HourFormat = RTC_HOURFORMAT_24;
+  hrtc.Init.AsynchPrediv = 127;
+  hrtc.Init.SynchPrediv = 255;
+  hrtc.Init.OutPut = RTC_OUTPUT_DISABLE;
+  hrtc.Init.OutPutPolarity = RTC_OUTPUT_POLARITY_HIGH;
+  hrtc.Init.OutPutType = RTC_OUTPUT_TYPE_OPENDRAIN;
+  if (HAL_RTC_Init(&hrtc) != HAL_OK)
+  {
+    Error_Handler();
+  }
+
+  /* USER CODE BEGIN Check_RTC_BKUP */
+
+  /* USER CODE END Check_RTC_BKUP */
+
+  /** Initialize RTC and set the Time and Date
+  */
+  sTime.Hours = 0x0;
+  sTime.Minutes = 0x0;
+  sTime.Seconds = 0x0;
+  sTime.DayLightSaving = RTC_DAYLIGHTSAVING_NONE;
+  sTime.StoreOperation = RTC_STOREOPERATION_RESET;
+  if (HAL_RTC_SetTime(&hrtc, &sTime, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sDate.WeekDay = RTC_WEEKDAY_MONDAY;
+  sDate.Month = RTC_MONTH_JANUARY;
+  sDate.Date = 0x1;
+  sDate.Year = 0x0;
+
+  if (HAL_RTC_SetDate(&hrtc, &sDate, RTC_FORMAT_BCD) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN RTC_Init 2 */
+
+  /* USER CODE END RTC_Init 2 */
+
 }
 
 /**
@@ -361,13 +404,10 @@ void SPI_Init(){
 }
 
 uint16_t SPI_Transmit(uint8_t data){
-    //  Wait until the TX buffer is empty, i.e. data is transmitted
     while(!((SPI1->SR) & SPI_SR_TXE)){}
-    // Load the data into the data register
     SPI1->DR = data;
 
     while(!(SPI1->SR & SPI_SR_RXNE)){}
-    // If reception is intended, read the value from the data register
     rxd = SPI1->DR;
 
     return rxd;
